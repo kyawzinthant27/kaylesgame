@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kayles AI Benchmark</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --pin-active: #ffffff;
+            --pin-stripe: #ef4444;
+            --pin-selected: #fcd34d;
+            --pin-knocked: #334155;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        select,
+        button {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        input[type="range"] {
+            cursor: pointer;
+            accent-color: var(--pin-stripe);
+            width: 120px;
+            margin: 0 10px;
+        }
+
+        button {
+            background: var(--panel);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: var(--border);
+        }
+
+        button.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        button.primary:hover {
+            background: var(--accent-hover);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+        }
+
+        #game-board {
+            display: flex;
+            gap: 10px;
+            margin: 3rem 0;
+            min-height: 200px;
+            align-items: flex-end;
+        }
+
+        .pin-container {
+            cursor: pointer;
+            transition: transform 0.2s;
+            padding: 10px;
+        }
+
+        .pin-container:hover {
+            transform: translateY(-5px);
+        }
+
+        .pin-container.knocked {
+            cursor: default;
+            transform: none;
+            opacity: 0.3;
+        }
+
+        .pin-container.knocked:hover {
+            transform: none;
+        }
+
+        .dashboard {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            display: flex;
+            gap: 2rem;
+            margin-top: auto;
+            width: 100%;
+            max-width: 900px;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 150px;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        #turn-indicator {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            min-height: 1.5em;
+        }
+
+        #overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #overlay h2 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Kayles Benchmark</h1>
+        <div class="controls">
+            <div style="display: flex; align-items: center;">
+                <label for="pin-count" style="color: var(--muted);">Pins: <span id="pin-display">10</span></label>
+                <input type="range" id="pin-count" min="5" max="15" value="10">
+            </div>
+            <select id="ai-mode">
+                <option value="minimax">Minimax (Brute Force)</option>
+                <option value="ab">Alpha-Beta Pruning</option>
+                <option value="ab-cache" selected>AB + Symmetry Cache</option>
+            </select>
+            <button id="btn-reset">Reset Game</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="turn-indicator">Your Turn</div>
+        <div id="game-board"></div>
+        <button id="btn-confirm" class="primary" disabled>Confirm Move</button>
+
+        <div class="dashboard">
+            <div class="metric">
+                <div class="metric-label">Nodes Evaluated</div>
+                <div class="metric-value" id="stat-nodes">0</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Thinking Time</div>
+                <div class="metric-value" id="stat-time">0.00 s</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Branches Pruned</div>
+                <div class="metric-value" id="stat-pruned" style="color: var(--accent);">0</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Cache Hits</div>
+                <div class="metric-value" id="stat-cache" style="color: #eab308;">0</div>
+            </div>
+        </div>
+    </main>
+
+    <div id="overlay">
+        <h2 id="winner-text">You Win!</h2>
+        <button id="btn-play-again" class="primary">Play Again</button>
+    </div>
+
+    <script>
+        const UI = {
+            board: document.getElementById('game-board'),
+            pinSlider: document.getElementById('pin-count'),
+            pinDisplay: document.getElementById('pin-display'),
+            modeSelect: document.getElementById('ai-mode'),
+            btnReset: document.getElementById('btn-reset'),
+            btnConfirm: document.getElementById('btn-confirm'),
+            btnPlayAgain: document.getElementById('btn-play-again'),
+            indicator: document.getElementById('turn-indicator'),
+            statNodes: document.getElementById('stat-nodes'),
+            statTime: document.getElementById('stat-time'),
+            statPruned: document.getElementById('stat-pruned'),
+            statCache: document.getElementById('stat-cache'),
+            overlay: document.getElementById('overlay'),
+            winnerText: document.getElementById('winner-text')
+        };
+
+        let numPins = 10;
+        let gameState = 0;
+        let selectedPins = [];
+        let isPlayerTurn = true;
+        let aiWorker = null;
+        let animationFrameId = null;
+        let startTime = 0;
+
+        const workerSource = `
+            let numPins = 10;
+            let stats = { nodes: 0, cacheHits: 0, pruned: 0 };
+            let memo = new Map();
+
+            const getPossibleMoves = (state) => {
+                let moves = [];
+                for (let i = 0; i < numPins; i++) {
+                    if ((state & (1 << i)) !== 0) {
+                        moves.push(state & ~(1 << i));
+                        if (i < numPins - 1 && (state & (1 << (i + 1))) !== 0) {
+                            moves.push(state & ~(3 << i));
+                        }
+                    }
+                }
+                return moves;
+            };
+
+            const getCanonical = (state) => {
+                let reversed = 0;
+                for (let i = 0; i < numPins; i++) {
+                    if ((state & (1 << i)) !== 0) reversed |= (1 << (numPins - 1 - i));
+                }
+                return Math.min(state, reversed);
+            };
+
+            const checkProgress = () => {
+                if ((stats.nodes & 0x7FFF) === 0) {
+                    self.postMessage({ type: 'progress', nodes: stats.nodes, pruned: stats.pruned });
+                }
+            };
+
+            const minimax = (state, isMax) => {
+                stats.nodes++;
+                checkProgress();
+                if (state === 0) return isMax ? -1 : 1;
+                let moves = getPossibleMoves(state);
+                let best = isMax ? -Infinity : Infinity;
+                for (let i = 0; i < moves.length; i++) {
+                    let val = minimax(moves[i], !isMax);
+                    best = isMax ? Math.max(best, val) : Math.min(best, val);
+                }
+                return best;
+            };
+
+            const alphabeta = (state, alpha, beta, isMax) => {
+                stats.nodes++;
+                checkProgress();
+                if (state === 0) return isMax ? -1 : 1;
+                let moves = getPossibleMoves(state);
+                let best = isMax ? -Infinity : Infinity;
+                for (let i = 0; i < moves.length; i++) {
+                    let val = alphabeta(moves[i], alpha, beta, !isMax);
+                    if (isMax) {
+                        best = Math.max(best, val);
+                        alpha = Math.max(alpha, best);
+                    } else {
+                        best = Math.min(best, val);
+                        beta = Math.min(beta, best);
+                    }
+                    if (beta <= alpha) {
+                        stats.pruned += (moves.length - 1 - i);
+                        break;
+                    }
+                }
+                return best;
+            };
+
+            const alphabetaCache = (state, alpha, beta, isMax) => {
+                stats.nodes++;
+                checkProgress();
+                const canonical = getCanonical(state);
+                const key = canonical + '-' + isMax;
+                if (memo.has(key)) {
+                    stats.cacheHits++;
+                    return memo.get(key);
+                }
+                if (state === 0) return isMax ? -1 : 1;
+                let moves = getPossibleMoves(state);
+                let best = isMax ? -Infinity : Infinity;
+                for (let i = 0; i < moves.length; i++) {
+                    let val = alphabetaCache(moves[i], alpha, beta, !isMax);
+                    if (isMax) {
+                        best = Math.max(best, val);
+                        alpha = Math.max(alpha, best);
+                    } else {
+                        best = Math.min(best, val);
+                        beta = Math.min(beta, best);
+                    }
+                    if (beta <= alpha) {
+                        stats.pruned += (moves.length - 1 - i);
+                        break;
+                    }
+                }
+                memo.set(key, best);
+                return best;
+            };
+
+            self.onmessage = (e) => {
+                const { gameState, mode, pins } = e.data;
+                numPins = pins;
+                stats = { nodes: 0, cacheHits: 0, pruned: 0 };
+                memo = new Map();
+
+                let moves = getPossibleMoves(gameState);
+                let bestMove = moves[0];
+                let bestScore = -Infinity;
+
+                for (let i = 0; i < moves.length; i++) {
+                    let score;
+                    if (mode === 'minimax') score = minimax(moves[i], false);
+                    else if (mode === 'ab') score = alphabeta(moves[i], -Infinity, Infinity, false);
+                    else score = alphabetaCache(moves[i], -Infinity, Infinity, false);
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = moves[i];
+                    }
+                }
+
+                self.postMessage({ type: 'complete', bestMove, stats });
+            };
+        `;
+
+        const initWorker = () => {
+            if (aiWorker) aiWorker.terminate();
+            const blob = new Blob([workerSource], { type: 'application/javascript' });
+            aiWorker = new Worker(URL.createObjectURL(blob));
+
+            aiWorker.onmessage = (e) => {
+                if (e.data.type === 'progress') {
+                    UI.statNodes.innerText = e.data.nodes.toLocaleString();
+                    UI.statPruned.innerText = e.data.pruned.toLocaleString();
+                } else if (e.data.type === 'complete') {
+                    cancelAnimationFrame(animationFrameId);
+                    const endTime = performance.now();
+
+                    UI.statNodes.innerText = e.data.stats.nodes.toLocaleString();
+                    UI.statTime.innerText = ((endTime - startTime) / 1000).toFixed(2) + " s";
+                    UI.statPruned.innerText = e.data.stats.pruned.toLocaleString();
+                    UI.statCache.innerText = e.data.stats.cacheHits.toLocaleString();
+
+                    gameState = e.data.bestMove;
+                    renderBoard();
+
+                    if (gameState === 0) { endGame("AI Wins!"); return; }
+
+                    isPlayerTurn = true;
+                    UI.indicator.innerText = "Your Turn";
+                    UI.indicator.style.color = "var(--text)";
+                    renderBoard();
+                }
+            };
+        };
+
+        const initGame = () => {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            initWorker();
+            numPins = parseInt(UI.pinSlider.value);
+            UI.pinDisplay.innerText = numPins;
+            gameState = (1 << numPins) - 1;
+            selectedPins = [];
+            isPlayerTurn = true;
+            UI.indicator.innerText = "Your Turn";
+            UI.indicator.style.color = "var(--text)";
+            UI.btnConfirm.disabled = true;
+            UI.overlay.classList.remove('active');
+
+            UI.statNodes.innerText = "0";
+            UI.statTime.innerText = "0.00 s";
+            UI.statPruned.innerText = "0";
+            UI.statCache.innerText = "0";
+
+            renderBoard();
+        };
+
+        const createPinSVG = (isActive, isSelected) => {
+            const fill = isActive ? (isSelected ? 'var(--pin-selected)' : 'var(--pin-active)') : 'transparent';
+            const stroke = isActive ? 'none' : 'var(--pin-knocked)';
+            const stripe = isActive ? 'var(--pin-stripe)' : 'transparent';
+
+            return `
+                <svg width="40" height="120" viewBox="0 0 40 120" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 15 10 C 15 0, 25 0, 25 10 C 25 25, 35 45, 35 80 C 35 110, 30 120, 20 120 C 10 120, 5 110, 5 80 C 5 45, 15 25, 15 10 Z" 
+                          fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                    ${isActive ? `<path d="M 12 35 Q 20 40 28 35 M 10 45 Q 20 50 30 45" stroke="${stripe}" stroke-width="3" fill="none"/>` : ''}
+                </svg>
+            `;
+        };
+
+        const renderBoard = () => {
+            UI.board.innerHTML = '';
+            for (let i = 0; i < numPins; i++) {
+                const isActive = (gameState & (1 << i)) !== 0;
+                const isSelected = selectedPins.includes(i);
+
+                const pinDiv = document.createElement('div');
+                pinDiv.className = `pin-container ${!isActive ? 'knocked' : ''}`;
+                pinDiv.innerHTML = createPinSVG(isActive, isSelected);
+
+                if (isActive && isPlayerTurn) {
+                    pinDiv.onclick = () => handlePinClick(i);
+                }
+                UI.board.appendChild(pinDiv);
+            }
+        };
+
+        const handlePinClick = (index) => {
+            if (selectedPins.includes(index)) {
+                selectedPins = selectedPins.filter(p => p !== index);
+            } else {
+                if (selectedPins.length === 0) {
+                    selectedPins.push(index);
+                } else if (selectedPins.length === 1) {
+                    const diff = Math.abs(selectedPins[0] - index);
+                    if (diff === 1) selectedPins.push(index);
+                } else {
+                    selectedPins = [index];
+                }
+            }
+            UI.btnConfirm.disabled = selectedPins.length === 0;
+            renderBoard();
+        };
+
+        const applyHumanMove = () => {
+            if (selectedPins.length === 0) return;
+            selectedPins.forEach(p => { gameState &= ~(1 << p); });
+            selectedPins = [];
+            UI.btnConfirm.disabled = true;
+            renderBoard();
+
+            if (gameState === 0) { endGame("You Win!"); return; }
+
+            isPlayerTurn = false;
+            UI.indicator.innerText = "AI is thinking...";
+            UI.indicator.style.color = "var(--accent)";
+
+            startTime = performance.now();
+            updateTimer();
+            aiWorker.postMessage({ gameState, mode: UI.modeSelect.value, pins: numPins });
+        };
+
+        const updateTimer = () => {
+            const current = performance.now();
+            UI.statTime.innerText = ((current - startTime) / 1000).toFixed(2) + " s";
+            animationFrameId = requestAnimationFrame(updateTimer);
+        };
+
+        const endGame = (msg) => {
+            UI.winnerText.innerText = msg;
+            UI.overlay.classList.add('active');
+        };
+
+        UI.pinSlider.addEventListener('input', initGame);
+        UI.btnReset.addEventListener('click', initGame);
+        UI.btnConfirm.addEventListener('click', applyHumanMove);
+        UI.btnPlayAgain.addEventListener('click', initGame);
+
+        initGame();
+    </script>
+</body>
+
+</html>

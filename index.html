@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kayles AI Benchmark</title>
+    <title>Kayles Optimization Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root {
             --bg: #0f172a;
@@ -12,12 +13,12 @@
             --border: #334155;
             --text: #f8fafc;
             --muted: #94a3b8;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --pin-active: #ffffff;
-            --pin-stripe: #ef4444;
-            --pin-selected: #fcd34d;
-            --pin-knocked: #334155;
+            --max: #f59e0b;
+            --min: #06b6d4;
+            --win: #10b981;
+            --lose: #ef4444;
+            --memo: #eab308;
+            --compare: #f472b6;
         }
 
         body {
@@ -27,511 +28,913 @@
             color: var(--text);
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
         }
 
         header {
             background: var(--panel);
             border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
+            padding: 0.75rem 1.5rem;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
+            gap: 1.5rem;
+            z-index: 10;
         }
 
         h1 {
             margin: 0;
-            font-size: 1.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
         }
 
-        .controls {
+        .group {
             display: flex;
-            gap: 1rem;
             align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid var(--border);
+            padding-right: 1.5rem;
         }
 
-        select,
-        button {
-            background: var(--bg);
-            color: var(--text);
-            border: 1px solid var(--border);
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-size: 0.9rem;
-        }
-
-        input[type="range"] {
-            cursor: pointer;
-            accent-color: var(--pin-stripe);
-            width: 120px;
-            margin: 0 10px;
+        .group:last-child {
+            border-right: none;
         }
 
         button {
-            background: var(--panel);
+            background: #334155;
+            color: white;
+            border: 1px solid #475569;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: background 0.2s;
-            font-weight: bold;
+            transition: all 0.2s;
         }
 
         button:hover {
-            background: var(--border);
+            background: #475569;
         }
 
-        button.primary {
-            background: var(--accent);
-            border-color: var(--accent);
+        button.active {
+            background: var(--win);
+            border-color: #059669;
         }
 
-        button.primary:hover {
-            background: var(--accent-hover);
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 2rem;
-            position: relative;
-        }
-
-        #game-board {
-            display: flex;
-            gap: 10px;
-            margin: 3rem 0;
-            min-height: 200px;
-            align-items: flex-end;
-        }
-
-        .pin-container {
+        input[type="range"] {
+            width: 90px;
             cursor: pointer;
-            transition: transform 0.2s;
-            padding: 10px;
         }
 
-        .pin-container:hover {
-            transform: translateY(-5px);
+        #workspace {
+            flex: 1;
+            position: relative;
+            display: flex;
         }
 
-        .pin-container.knocked {
-            cursor: default;
-            transform: none;
-            opacity: 0.3;
+        #canvas-container {
+            flex: 1;
+            cursor: grab;
+            background: #0b1120;
         }
 
-        .pin-container.knocked:hover {
-            transform: none;
+        #canvas-container:active {
+            cursor: grabbing;
         }
 
-        .dashboard {
-            background: var(--panel);
+        #metrics-panel {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(30, 41, 59, 0.92);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 1.5rem;
-            display: flex;
-            gap: 2rem;
-            margin-top: auto;
-            width: 100%;
-            max-width: 900px;
-            justify-content: space-around;
-            flex-wrap: wrap;
+            padding: 1rem;
+            width: 280px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
 
         .metric {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-            min-width: 150px;
+            margin-bottom: 0.75rem;
+        }
+
+        .metric:last-child {
+            margin-bottom: 0;
         }
 
         .metric-label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--muted);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
         }
 
-        .metric-value {
-            font-size: 1.8rem;
+        .metric-val {
+            font-size: 1.5rem;
+            font-weight: 300;
+            font-family: monospace;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .metric-sub {
+            font-size: 0.8rem;
+            color: var(--win);
+        }
+
+        #legend {
+            border-top: 1px solid var(--border);
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            font-size: 0.72rem;
+            color: var(--muted);
+        }
+
+        #legend .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        #legend .sw {
+            width: 18px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+
+        #step-indicator {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.9rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--muted);
+            backdrop-filter: blur(4px);
+        }
+
+        #step-indicator span {
+            color: var(--text);
+            font-weight: bold;
+        }
+
+        .link {
+            fill: none;
+            stroke: var(--border);
+            stroke-width: 1.5px;
+            transition: opacity 0.2s;
+            opacity: 0;
+        }
+
+        .link.visible {
+            opacity: 1;
+        }
+
+        .link.pruned {
+            stroke: var(--lose);
+            stroke-width: 2px;
+        }
+
+        .node {
+            transition: opacity 0.2s, filter 0.2s;
+            opacity: 0;
+        }
+
+        .node.visible {
+            opacity: 1;
+        }
+
+        .node rect {
+            rx: 12;
+            fill: transparent;
+            stroke: rgba(255, 255, 255, 0.55);
+            stroke-width: 1.5px;
+            transition: fill 0.3s ease, stroke 0.3s ease;
+        }
+
+        .node-memo.cache-symmetric rect {
+            stroke: var(--memo);
+            stroke-width: 2px;
+            stroke-dasharray: 4, 4;
+        }
+
+        .node-memo.cache-exact rect {
+            stroke: var(--memo);
+            stroke-width: 2px;
+        }
+
+        .node-pruned rect {
+            stroke: rgba(239, 68, 68, 0.7);
+            stroke-dasharray: 3, 3;
+            fill: rgba(239, 68, 68, 0.10);
+        }
+
+        .node.resolved:not(.node-memo):not(.node-pruned) rect {
+            stroke: transparent;
+        }
+
+        .node.val-win rect {
+            fill: rgba(16, 185, 129, 0.24);
+        }
+
+        .node.val-lose rect {
+            fill: rgba(239, 68, 68, 0.22);
+        }
+
+        .node.highlight rect {
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.85));
+        }
+
+        .node text {
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
+        .txt-state {
+            font-size: 12px;
             font-family: monospace;
             font-weight: bold;
+            fill: #fff;
         }
 
-        #turn-indicator {
-            font-size: 1.2rem;
+        .txt-val {
+            font-size: 10px;
+            font-family: monospace;
             font-weight: bold;
-            margin-bottom: 1rem;
-            min-height: 1.5em;
-        }
-
-        #overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.9);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
+            fill: var(--muted);
             opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s;
+            transition: opacity 0.3s ease;
         }
 
-        #overlay.active {
+        .node.resolved .txt-val {
             opacity: 1;
-            pointer-events: auto;
         }
 
-        #overlay h2 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+        .txt-val.win {
+            fill: var(--win);
+        }
+
+        .txt-val.lose {
+            fill: var(--lose);
+        }
+
+        .txt-canonical {
+            font-size: 8px;
+            fill: #64748b;
+            font-family: monospace;
+            letter-spacing: 0.3px;
+        }
+
+        .txt-canonical.shared {
+            fill: var(--memo);
+        }
+
+        .txt-ab {
+            font-size: 8px;
+            font-family: monospace;
+            fill: #94a3b8;
+            letter-spacing: 0.3px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .node.visible .txt-ab {
+            opacity: 0.95;
+        }
+
+        .txt-ab.cutoff {
+            fill: var(--lose);
+            font-weight: bold;
+        }
+
+        .txt-pruned {
+            fill: var(--lose);
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .bg-line {
+            stroke: rgba(255, 255, 255, 0.05);
+            stroke-width: 1px;
+        }
+
+        .bg-label {
+            font-size: 14px;
+            font-weight: 800;
+            opacity: 0.22;
+            letter-spacing: 2px;
+        }
+
+        .bg-max {
+            fill: var(--max);
+        }
+
+        .bg-min {
+            fill: var(--min);
+        }
+
+        .cache-line {
+            fill: none;
+            stroke: var(--memo);
+            stroke-width: 3px;
+            stroke-dasharray: 8, 6;
+            animation: flowCache 1s linear infinite;
+            filter: drop-shadow(0 0 5px var(--memo));
+        }
+
+        @keyframes flowCache {
+            to {
+                stroke-dashoffset: -28;
+            }
+        }
+
+        .cache-badge-bg {
+            fill: #0f172a;
+            stroke: var(--memo);
+            stroke-width: 1.5px;
+            rx: 6;
+        }
+
+        .cache-badge-txt {
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            fill: var(--memo);
+            text-anchor: middle;
+            alignment-baseline: middle;
+        }
+
+        .node.cache-target rect,
+        .node.cache-source rect {
+            stroke: var(--memo) !important;
+            stroke-width: 3px !important;
+            filter: drop-shadow(0 0 10px var(--memo));
+        }
+
+        .compare-line {
+            fill: none;
+            stroke: var(--compare);
+            stroke-width: 3px;
+            stroke-dasharray: 8, 6;
+            animation: flow 1s linear infinite;
+            filter: drop-shadow(0 0 4px var(--compare));
+        }
+
+        @keyframes flow {
+            to {
+                stroke-dashoffset: -28;
+            }
+        }
+
+        .compare-badge-bg {
+            fill: #0f172a;
+            stroke: var(--compare);
+            stroke-width: 1.5px;
+            rx: 6;
+        }
+
+        .compare-badge-txt {
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            fill: #fff;
+            text-anchor: middle;
+            alignment-baseline: middle;
+        }
+
+        .node.compare-target rect,
+        .node.compare-source rect {
+            stroke: var(--compare) !important;
+            stroke-width: 3px !important;
+            filter: drop-shadow(0 0 10px var(--compare));
         }
     </style>
 </head>
 
 <body>
-
     <header>
-        <h1>Kayles Benchmark</h1>
-        <div class="controls">
-            <div style="display: flex; align-items: center;">
-                <label for="pin-count" style="color: var(--muted);">Pins: <span id="pin-display">10</span></label>
-                <input type="range" id="pin-count" min="5" max="15" value="10">
-            </div>
-            <select id="ai-mode">
-                <option value="minimax">Minimax (Brute Force)</option>
-                <option value="ab">Alpha-Beta Pruning</option>
-                <option value="ab-cache" selected>AB + Symmetry Cache</option>
-            </select>
-            <button id="btn-reset">Reset Game</button>
+        <h1>Kayles Optimization Visualizer</h1>
+        <div class="group">
+            <button id="mode-normal">Normal Tree</button>
+            <button id="mode-ab">Alpha-Beta</button>
+            <button id="mode-iso" class="active">AB + Cache (Symmetry)</button>
         </div>
+        <div class="group">
+            <button id="btn-prev">⏮</button>
+            <button id="btn-play">▶ Play</button>
+            <button id="btn-next">⏭</button>
+            <div style="display:flex; align-items:center; gap:5px; margin-left:5px;">
+                <span style="font-size:0.75rem; color:var(--muted);">Speed:</span>
+                <input type="range" id="slider-speed" min="20" max="1500" value="400" dir="rtl">
+            </div>
+        </div>
+        <div class="group"><button id="btn-reset" style="background:transparent;">⌂ Center View</button></div>
     </header>
 
-    <main>
-        <div id="turn-indicator">Your Turn</div>
-        <div id="game-board"></div>
-        <button id="btn-confirm" class="primary" disabled>Confirm Move</button>
+    <div id="workspace">
+        <div id="canvas-container"></div>
 
-        <div class="dashboard">
+        <div id="metrics-panel">
             <div class="metric">
                 <div class="metric-label">Nodes Evaluated</div>
-                <div class="metric-value" id="stat-nodes">0</div>
+                <div class="metric-val"><span id="met-eval">0</span> <span class="metric-sub" id="met-time-saved">0%
+                        Saved</span></div>
             </div>
             <div class="metric">
-                <div class="metric-label">Thinking Time</div>
-                <div class="metric-value" id="stat-time">0.00 s</div>
+                <div class="metric-label">Memory (States)</div>
+                <div class="metric-val"><span id="met-nodes">0</span> <span class="metric-sub" id="met-space-saved">0%
+                        Saved</span></div>
             </div>
             <div class="metric">
                 <div class="metric-label">Branches Pruned</div>
-                <div class="metric-value" id="stat-pruned" style="color: var(--accent);">0</div>
+                <div class="metric-val" id="met-cuts" style="color:var(--lose);">0</div>
             </div>
             <div class="metric">
                 <div class="metric-label">Cache Hits</div>
-                <div class="metric-value" id="stat-cache" style="color: #eab308;">0</div>
+                <div class="metric-val" id="met-cache" style="color:var(--memo);">0</div>
+            </div>
+            <div id="legend">
+                <div class="row">
+                    <span class="sw" style="background:transparent; border:1.5px solid rgba(255,255,255,0.55);"></span>
+                    <span>pending (not yet resolved)</span>
+                </div>
+                <div class="row" style="color:var(--win);">
+                    <span class="sw" style="background:rgba(16,185,129,0.24);"></span>
+                    <span>MAX wins (+1)</span>
+                </div>
+                <div class="row" style="color:var(--lose);">
+                    <span class="sw" style="background:rgba(239,68,68,0.22);"></span>
+                    <span>MAX loses (-1)</span>
+                </div>
+                <div class="row" style="color:var(--memo);">
+                    <span class="sw" style="background:transparent; border:1.5px solid var(--memo);"></span>
+                    <span>Cache Hit (exact)</span>
+                </div>
+                <div class="row" style="color:var(--memo);">
+                    <span class="sw" style="background:transparent; border:1.5px dashed var(--memo);"></span>
+                    <span>Symmetric Cache Hit</span>
+                </div>
+                <div class="row" style="color:var(--compare);">
+                    <span class="sw" style="background:transparent; border:1.5px dashed var(--compare);"></span>
+                    <span>Alpha-Beta Prune</span>
+                </div>
             </div>
         </div>
-    </main>
 
-    <div id="overlay">
-        <h2 id="winner-text">You Win!</h2>
-        <button id="btn-play-again" class="primary">Play Again</button>
+        <div id="step-indicator">step <span id="step-current">0</span> / <span id="step-total">0</span></div>
     </div>
 
     <script>
-        const UI = {
-            board: document.getElementById('game-board'),
-            pinSlider: document.getElementById('pin-count'),
-            pinDisplay: document.getElementById('pin-display'),
-            modeSelect: document.getElementById('ai-mode'),
-            btnReset: document.getElementById('btn-reset'),
-            btnConfirm: document.getElementById('btn-confirm'),
-            btnPlayAgain: document.getElementById('btn-play-again'),
-            indicator: document.getElementById('turn-indicator'),
-            statNodes: document.getElementById('stat-nodes'),
-            statTime: document.getElementById('stat-time'),
-            statPruned: document.getElementById('stat-pruned'),
-            statCache: document.getElementById('stat-cache'),
-            overlay: document.getElementById('overlay'),
-            winnerText: document.getElementById('winner-text')
+        const getPossibleMoves = state => {
+            const moves = [];
+            for (let i = 0; i < 4; i++) {
+                if ((state >> i) & 1) {
+                    moves.push(state ^ (1 << i));
+                    if (i < 3 && ((state >> (i + 1)) & 1)) moves.push(state ^ (3 << i));
+                }
+            }
+            return [...new Set(moves)];
         };
 
-        let numPins = 10;
-        let gameState = 0;
-        let selectedPins = [];
-        let isPlayerTurn = true;
-        let aiWorker = null;
-        let animationFrameId = null;
-        let startTime = 0;
+        const reverseBits = n => { let r = 0; for (let i = 0; i < 4; i++) r = (r << 1) | ((n >> i) & 1); return r; };
+        const getCanonical = s => Math.min(s, reverseBits(s));
+        const formatBinary = state => state.toString(2).padStart(4, '0');
+        const formatAB = v => { if (v === Infinity) return '+∞'; if (v === -Infinity) return '-∞'; return v > 0 ? '+' + v : String(v); };
 
-        const workerSource = `
-            let numPins = 10;
-            let stats = { nodes: 0, cacheHits: 0, pruned: 0 };
-            let memo = new Map();
+        const lookupAB = (history, step) => {
+            if (!history || !history.length) return null;
+            let result = history[0];
+            for (const entry of history) {
+                if (entry.step <= step) result = entry;
+                else break;
+            }
+            return result.step <= step ? result : null;
+        };
 
-            const getPossibleMoves = (state) => {
-                let moves = [];
-                for (let i = 0; i < numPins; i++) {
-                    if ((state & (1 << i)) !== 0) {
-                        moves.push(state & ~(1 << i));
-                        if (i < numPins - 1 && (state & (1 << (i + 1))) !== 0) {
-                            moves.push(state & ~(3 << i));
+        let engineData = { tree: null, maxSteps: 0, stepsInfo: [] };
+        let baselineNodes = 0; let baselineEval = 0;
+        let currentMode = 'iso';
+
+        const getFinalStats = (data) => data.stepsInfo[data.maxSteps] || { eval: 0, nodes: 0 };
+
+        const ensureBaseline = () => {
+            if (baselineEval > 0 && baselineNodes > 0) return;
+            const baselineData = generateTree('normal');
+            const final = getFinalStats(baselineData);
+            baselineEval = final.eval;
+            baselineNodes = final.nodes;
+        };
+
+        const generateTree = (mode) => {
+            let idCounter = 0; let stepCounter = 0;
+            let stats = { eval: 0, cuts: 0, cache: 0, nodes: 0 };
+            const memo = new Map(); const stepsInfo = [];
+
+            const recordStep = (metricsUpdate) => {
+                stats = { ...stats, ...metricsUpdate };
+                stepsInfo[stepCounter] = { ...stats };
+                return stepCounter++;
+            };
+
+            const dfs = (state, alpha, beta, alphaId, betaId, isMax) => {
+                stats.nodes++;
+                const canonical = getCanonical(state);
+                const tracksAB = (mode !== 'normal');
+
+                if (mode === 'iso' && state !== 0) {
+                    const key = `${canonical}-${isMax}`;
+                    if (memo.has(key)) {
+                        const cached = memo.get(key);
+                        const rStep = recordStep({ cache: stats.cache + 1 });
+                        const cacheKind = (state === cached.sourceStateNum) ? 'exact' : 'symmetric';
+
+                        const node = {
+                            id: ++idCounter, stateStr: formatBinary(state), canonicalStr: formatBinary(canonical),
+                            state, isMax, children: [], value: cached.value, type: 'memo',
+                            cacheKind,
+                            cachedFromState: cached.sourceState, cachedFromId: cached.sourceId,
+                            revealStep: rStep, resolveStep: rStep
+                        };
+                        if (tracksAB) node.abHistory = [{ step: rStep, alpha, beta, cutoff: false }];
+                        return node;
+                    }
+                }
+
+                const rStep = recordStep({ eval: stats.eval + 1 });
+                const node = {
+                    id: ++idCounter, stateStr: formatBinary(state), canonicalStr: formatBinary(canonical),
+                    state, isMax, children: [], value: null, type: isMax ? 'max' : 'min',
+                    revealStep: rStep
+                };
+                if (tracksAB) node.abHistory = [{ step: rStep, alpha, beta, cutoff: false }];
+
+                if (state === 0) {
+                    node.value = isMax ? -1 : 1;
+                    node.resolveStep = rStep;
+                    return node;
+                }
+
+                let bestVal = isMax ? -Infinity : Infinity;
+                let curAlpha = alpha, curBeta = beta;
+                let curAlphaId = alphaId, curBetaId = betaId;
+                const moves = getPossibleMoves(state);
+
+                for (let i = 0; i < moves.length; i++) {
+                    const child = dfs(moves[i], curAlpha, curBeta, curAlphaId, curBetaId, !isMax);
+                    node.children.push(child);
+
+                    if (isMax) {
+                        bestVal = Math.max(bestVal, child.value);
+                        if (tracksAB && bestVal > curAlpha) { curAlpha = bestVal; curAlphaId = node.id; }
+                    } else {
+                        bestVal = Math.min(bestVal, child.value);
+                        if (tracksAB && bestVal < curBeta) { curBeta = bestVal; curBetaId = node.id; }
+                    }
+
+                    const didCutoff = (tracksAB && curBeta <= curAlpha);
+
+                    if (didCutoff) {
+                        const hasChildrenToPrune = i < moves.length - 1;
+
+                        if (hasChildrenToPrune) {
+                            const targetCompareId = isMax ? curBetaId : curAlphaId;
+                            const cutStep = recordStep({ cuts: stats.cuts + 1 });
+
+                            node.abHistory.push({
+                                step: cutStep, alpha: curAlpha, beta: curBeta,
+                                cutoff: true,
+                                compareSourceId: node.id, compareTargetId: targetCompareId
+                            });
+
+                            stats.nodes++;
+                            node.children.push({
+                                id: ++idCounter, stateStr: "✂ CUT", canonicalStr: "",
+                                state: -1, isMax: !isMax, children: [], value: null, type: 'pruned',
+                                revealStep: cutStep, resolveStep: cutStep
+                            });
+
+                            node.value = bestVal;
+                            if (mode === 'iso') memo.set(`${canonical}-${isMax}`, {
+                                value: bestVal, sourceState: node.stateStr, sourceStateNum: state,
+                                sourceStep: node.revealStep, sourceId: node.id
+                            });
+                            node.resolveStep = cutStep;
+
+                        } else {
+                            node.abHistory.push({
+                                step: child.resolveStep, alpha: curAlpha, beta: curBeta,
+                                cutoff: false
+                            });
+                            node.value = bestVal;
+                            if (mode === 'iso') memo.set(`${canonical}-${isMax}`, {
+                                value: bestVal, sourceState: node.stateStr, sourceStateNum: state,
+                                sourceStep: node.revealStep, sourceId: node.id
+                            });
+                            node.resolveStep = recordStep({});
+                        }
+
+                        return node;
+
+                    } else {
+                        if (tracksAB) node.abHistory.push({
+                            step: child.resolveStep, alpha: curAlpha, beta: curBeta, cutoff: false
+                        });
+                    }
+                }
+
+                node.value = bestVal;
+                if (mode === 'iso') memo.set(`${canonical}-${isMax}`, {
+                    value: bestVal, sourceState: node.stateStr, sourceStateNum: state,
+                    sourceStep: node.revealStep, sourceId: node.id
+                });
+                node.resolveStep = recordStep({});
+                return node;
+            };
+
+            const tree = dfs(15, -Infinity, Infinity, null, null, true);
+            return { tree, maxSteps: stepCounter - 1, stepsInfo };
+        };
+
+        const container = document.getElementById("canvas-container");
+        const svg = d3.select("#canvas-container").append("svg").attr("width", "100%").attr("height", "100%");
+        const g = svg.append("g");
+        const dynamicLayer = svg.append("g").attr("id", "dynamic-layer");
+
+        let nodeMap = new Map();
+        let zoomBehavior = d3.zoom().scaleExtent([0.1, 4]).on("zoom", e => {
+            g.attr("transform", e.transform);
+            dynamicLayer.attr("transform", e.transform);
+        });
+        svg.call(zoomBehavior);
+
+        const resetZoom = () => {
+            const t = d3.zoomIdentity.translate(container.clientWidth / 2, 80).scale(0.85);
+            svg.transition().duration(750).call(zoomBehavior.transform, t);
+        };
+
+        const cardW = 64, cardH = 58;
+        const depthSpacing = 110;
+
+        const initGraphics = (mode) => {
+            ensureBaseline();
+            engineData = generateTree(mode);
+
+            if (mode === 'normal') {
+                const final = getFinalStats(engineData);
+                baselineEval = final.eval;
+                baselineNodes = final.nodes;
+            }
+
+            const root = d3.hierarchy(engineData.tree);
+            d3.tree().nodeSize([72, 0])(root);
+            root.each(d => { d.y = d.depth * depthSpacing; });
+
+            nodeMap.clear();
+            root.descendants().forEach(d => nodeMap.set(d.data.id, d));
+
+            g.selectAll("*").remove(); dynamicLayer.selectAll("*").remove();
+
+            const descendants = root.descendants();
+            const minX = d3.min(descendants, d => d.x) - 150;
+            const maxX = d3.max(descendants, d => d.x) + 150;
+            const maxDepth = d3.max(descendants, d => d.depth);
+
+            const bgLayer = g.append("g").attr("class", "bg-layer");
+            for (let i = 0; i <= maxDepth; i++) {
+                const isMax = i % 2 === 0; const yPos = i * depthSpacing;
+                bgLayer.append("line").attr("class", "bg-line").attr("x1", minX).attr("x2", maxX).attr("y1", yPos).attr("y2", yPos);
+                bgLayer.append("text").attr("class", `bg-label ${isMax ? 'bg-max' : 'bg-min'}`).attr("x", minX + 20).attr("y", yPos - 8).text(isMax ? "MAX" : "MIN");
+                bgLayer.append("text").attr("class", `bg-label ${isMax ? 'bg-max' : 'bg-min'}`).attr("x", maxX - 60).attr("y", yPos - 8).text(isMax ? "MAX" : "MIN");
+            }
+
+            g.append("g").selectAll(".link").data(root.links()).join("path")
+                .attr("class", d => `link ${d.target.data.type === 'pruned' ? 'pruned' : ''}`)
+                .attr("d", d3.linkVertical().x(d => d.x).y(d => d.y));
+
+            const nodes = g.append("g").selectAll(".node").data(descendants).join("g")
+                .attr("class", d => {
+                    let cls = `node node-${d.data.type}`;
+                    if (d.data.cacheKind) cls += ` cache-${d.data.cacheKind}`;
+                    return cls;
+                })
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+
+            nodes.append("rect").attr("x", -cardW / 2).attr("y", -cardH / 2).attr("width", cardW).attr("height", cardH);
+
+            nodes.each(function (d) {
+                const el = d3.select(this);
+                if (d.data.type === 'pruned') {
+                    el.append("text").attr("class", "txt-pruned").attr("y", 4).text("✂ CUT");
+                    return;
+                }
+                el.append("text").attr("class", "txt-state").attr("y", -15).text(d.data.stateStr);
+                if (d.data.value !== null) {
+                    const valClass = d.data.value > 0 ? "win" : "lose";
+                    el.append("text").attr("class", `txt-val ${valClass}`).attr("y", -1)
+                        .text(`v:${d.data.value > 0 ? '+1' : d.data.value}`);
+                }
+                if (d.data.canonicalStr) {
+                    el.append("text").attr("class", "txt-canonical shared").attr("y", 11)
+                        .text(`c:${d.data.canonicalStr}`);
+                }
+                if (d.data.abHistory) {
+                    el.append("text").attr("class", "txt-ab").attr("y", 22);
+                }
+            });
+
+            resetZoom();
+            document.getElementById("step-total").innerText = engineData.maxSteps;
+        };
+
+        let currentStep = -1; let playInterval = null;
+
+        const updateDashboard = (step) => {
+            document.getElementById("step-current").innerText = Math.max(0, step);
+            if (step < 0) {
+                ["met-eval", "met-nodes", "met-cuts", "met-cache"].forEach(id => document.getElementById(id).innerText = 0);
+                document.getElementById("met-time-saved").innerText = `0% Saved`;
+                document.getElementById("met-space-saved").innerText = `0% Saved`;
+                return;
+            }
+            const stats = engineData.stepsInfo[step];
+            if (!stats) return;
+
+            document.getElementById("met-eval").innerText = stats.eval;
+            document.getElementById("met-nodes").innerText = stats.nodes;
+            document.getElementById("met-cuts").innerText = stats.cuts;
+            document.getElementById("met-cache").innerText = stats.cache;
+
+            if (currentMode === 'normal') {
+                document.getElementById("met-time-saved").innerText = `0% Saved`;
+                document.getElementById("met-space-saved").innerText = `0% Saved`;
+                return;
+            }
+
+            const finalStats = getFinalStats(engineData);
+            const maxEvalSaved = baselineEval > 0 ? (1 - finalStats.eval / baselineEval) * 100 : 0;
+            const maxNodeSaved = baselineNodes > 0 ? (1 - finalStats.nodes / baselineNodes) * 100 : 0;
+
+            const totalOpts = finalStats.cuts + finalStats.cache;
+            const currentOpts = stats.cuts + stats.cache;
+
+            const progress = totalOpts > 0 ? (currentOpts / totalOpts) : (step >= engineData.maxSteps ? 1 : 0);
+
+            const currentEvalSaved = Math.max(0, Math.round(maxEvalSaved * progress));
+            const currentNodeSaved = Math.max(0, Math.round(maxNodeSaved * progress));
+
+            document.getElementById("met-time-saved").innerText = `${currentEvalSaved}% Saved`;
+            document.getElementById("met-space-saved").innerText = `${currentNodeSaved}% Saved`;
+        };
+
+        const placeBadge = (sx, sy, tx, ty, badgeW, badgeH) => {
+            const mx = (sx + tx) / 2;
+            const my = (sy + ty) / 2;
+            const dx = tx - sx, dy = ty - sy;
+            const len = Math.max(1, Math.hypot(dx, dy));
+            const px = -dy / len, py = dx / len;
+            const sign = py < 0 ? 1 : -1;
+            const offset = 36;
+            return {
+                bx: mx + px * offset * sign,
+                by: my + py * offset * sign
+            };
+        };
+
+        const renderStep = () => {
+            d3.selectAll('.node')
+                .classed('visible', d => d.data.revealStep <= currentStep)
+                .classed('resolved', d => d.data.resolveStep <= currentStep)
+                .classed('val-win', d => d.data.resolveStep <= currentStep && d.data.value === 1)
+                .classed('val-lose', d => d.data.resolveStep <= currentStep && d.data.value === -1)
+                .classed('highlight', d => d.data.revealStep === currentStep || d.data.resolveStep === currentStep)
+                .classed('compare-source', false).classed('compare-target', false)
+                .classed('cache-source', false).classed('cache-target', false);
+
+            d3.selectAll('.txt-ab')
+                .text(d => { const ab = lookupAB(d.data.abHistory, currentStep); return ab ? `α:${formatAB(ab.alpha)} β:${formatAB(ab.beta)}` : ''; })
+                .classed('cutoff', d => { const ab = lookupAB(d.data.abHistory, currentStep); return !!(ab && ab.cutoff); });
+
+            d3.selectAll('.link').classed('visible', d => d.target.data.revealStep <= currentStep);
+            dynamicLayer.selectAll("*").remove();
+
+            for (const [, d] of nodeMap.entries()) {
+                if (d.data.type === 'memo' && d.data.revealStep === currentStep) {
+                    const sourceNode = nodeMap.get(d.data.cachedFromId);
+                    if (sourceNode) {
+                        d3.selectAll('.node').filter(n => n.data.id === d.data.id).classed('cache-target', true);
+                        d3.selectAll('.node').filter(n => n.data.id === sourceNode.data.id).classed('cache-source', true);
+
+                        const sx = d.x, sy = d.y - 30, tx = sourceNode.x, ty = sourceNode.y + 30;
+                        const dist = Math.abs(sx - tx);
+                        const offset = sx > tx ? dist * 0.4 + 50 : -(dist * 0.4 + 50);
+                        const cx = (sx + tx) / 2 + offset, cy = (sy + ty) / 2;
+
+                        dynamicLayer.append("path").attr("class", "cache-line").attr("d", `M ${sx},${sy} Q ${cx},${cy} ${tx},${ty}`);
+
+                        const isExact = (d.data.cacheKind === 'exact');
+                        const label = isExact
+                            ? `cache hit: ${d.data.stateStr} = ${sourceNode.data.stateStr}`
+                            : `symmetric cache: ${d.data.stateStr} ↔ ${sourceNode.data.stateStr}`;
+
+                        const { bx, by } = placeBadge(sx, sy, tx, ty, 0, 0);
+
+                        const badgeW = Math.max(190, label.length * 7.2);
+                        const badgeH = 22;
+                        const badgeGroup = dynamicLayer.append("g").attr("transform", `translate(${bx}, ${by})`);
+                        badgeGroup.append("rect").attr("class", "cache-badge-bg").attr("x", -badgeW / 2).attr("y", -badgeH / 2).attr("width", badgeW).attr("height", badgeH);
+                        badgeGroup.append("text").attr("class", "cache-badge-txt").text(label);
+                    }
+                }
+            }
+
+            for (const [, d] of nodeMap.entries()) {
+                if (d.data.abHistory && d.data.revealStep <= currentStep) {
+                    const ab = lookupAB(d.data.abHistory, currentStep);
+                    if (ab && ab.cutoff && ab.step === currentStep && ab.compareTargetId) {
+                        const targetNode = nodeMap.get(ab.compareTargetId);
+                        if (targetNode) {
+                            d3.selectAll('.node').filter(n => n.data.id === d.data.id).classed('compare-source', true);
+                            d3.selectAll('.node').filter(n => n.data.id === targetNode.data.id).classed('compare-target', true);
+
+                            const sx = d.x, sy = d.y - 30, tx = targetNode.x, ty = targetNode.y + 30;
+                            const dist = Math.abs(sx - tx);
+                            const offset = sx > tx ? dist * 0.5 + 40 : -(dist * 0.5 + 40);
+                            const cx = (sx + tx) / 2 + offset, cy = (sy + ty) / 2;
+
+                            dynamicLayer.append("path").attr("class", "compare-line").attr("d", `M ${sx},${sy} Q ${cx},${cy} ${tx},${ty}`);
+
+                            const txt = d.data.isMax
+                                ? `α(${formatAB(ab.alpha)}) ≥ β(${formatAB(ab.beta)})`
+                                : `β(${formatAB(ab.beta)}) ≤ α(${formatAB(ab.alpha)})`;
+                            const badgeW = Math.max(140, txt.length * 7.5);
+                            const badgeH = 26;
+                            const { bx, by } = placeBadge(sx, sy, tx, ty, 0, 0);
+                            const badgeGroup = dynamicLayer.append("g").attr("transform", `translate(${bx}, ${by})`);
+                            badgeGroup.append("rect").attr("class", "compare-badge-bg").attr("x", -badgeW / 2).attr("y", -badgeH / 2).attr("width", badgeW).attr("height", badgeH);
+                            badgeGroup.append("text").attr("class", "compare-badge-txt").text(txt);
                         }
                     }
                 }
-                return moves;
-            };
-
-            const getCanonical = (state) => {
-                let reversed = 0;
-                for (let i = 0; i < numPins; i++) {
-                    if ((state & (1 << i)) !== 0) reversed |= (1 << (numPins - 1 - i));
-                }
-                return Math.min(state, reversed);
-            };
-
-            const checkProgress = () => {
-                if ((stats.nodes & 0x7FFF) === 0) {
-                    self.postMessage({ type: 'progress', nodes: stats.nodes, pruned: stats.pruned });
-                }
-            };
-
-            const minimax = (state, isMax) => {
-                stats.nodes++;
-                checkProgress();
-                if (state === 0) return isMax ? -1 : 1;
-                let moves = getPossibleMoves(state);
-                let best = isMax ? -Infinity : Infinity;
-                for (let i = 0; i < moves.length; i++) {
-                    let val = minimax(moves[i], !isMax);
-                    best = isMax ? Math.max(best, val) : Math.min(best, val);
-                }
-                return best;
-            };
-
-            const alphabeta = (state, alpha, beta, isMax) => {
-                stats.nodes++;
-                checkProgress();
-                if (state === 0) return isMax ? -1 : 1;
-                let moves = getPossibleMoves(state);
-                let best = isMax ? -Infinity : Infinity;
-                for (let i = 0; i < moves.length; i++) {
-                    let val = alphabeta(moves[i], alpha, beta, !isMax);
-                    if (isMax) {
-                        best = Math.max(best, val);
-                        alpha = Math.max(alpha, best);
-                    } else {
-                        best = Math.min(best, val);
-                        beta = Math.min(beta, best);
-                    }
-                    if (beta <= alpha) {
-                        stats.pruned += (moves.length - 1 - i);
-                        break;
-                    }
-                }
-                return best;
-            };
-
-            const alphabetaCache = (state, alpha, beta, isMax) => {
-                stats.nodes++;
-                checkProgress();
-                const canonical = getCanonical(state);
-                const key = canonical + '-' + isMax;
-                if (memo.has(key)) {
-                    stats.cacheHits++;
-                    return memo.get(key);
-                }
-                if (state === 0) return isMax ? -1 : 1;
-                let moves = getPossibleMoves(state);
-                let best = isMax ? -Infinity : Infinity;
-                for (let i = 0; i < moves.length; i++) {
-                    let val = alphabetaCache(moves[i], alpha, beta, !isMax);
-                    if (isMax) {
-                        best = Math.max(best, val);
-                        alpha = Math.max(alpha, best);
-                    } else {
-                        best = Math.min(best, val);
-                        beta = Math.min(beta, best);
-                    }
-                    if (beta <= alpha) {
-                        stats.pruned += (moves.length - 1 - i);
-                        break;
-                    }
-                }
-                memo.set(key, best);
-                return best;
-            };
-
-            self.onmessage = (e) => {
-                const { gameState, mode, pins } = e.data;
-                numPins = pins;
-                stats = { nodes: 0, cacheHits: 0, pruned: 0 };
-                memo = new Map();
-
-                let moves = getPossibleMoves(gameState);
-                let bestMove = moves[0];
-                let bestScore = -Infinity;
-
-                for (let i = 0; i < moves.length; i++) {
-                    let score;
-                    if (mode === 'minimax') score = minimax(moves[i], false);
-                    else if (mode === 'ab') score = alphabeta(moves[i], -Infinity, Infinity, false);
-                    else score = alphabetaCache(moves[i], -Infinity, Infinity, false);
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMove = moves[i];
-                    }
-                }
-
-                self.postMessage({ type: 'complete', bestMove, stats });
-            };
-        `;
-
-        const initWorker = () => {
-            if (aiWorker) aiWorker.terminate();
-            const blob = new Blob([workerSource], { type: 'application/javascript' });
-            aiWorker = new Worker(URL.createObjectURL(blob));
-
-            aiWorker.onmessage = (e) => {
-                if (e.data.type === 'progress') {
-                    UI.statNodes.innerText = e.data.nodes.toLocaleString();
-                    UI.statPruned.innerText = e.data.pruned.toLocaleString();
-                } else if (e.data.type === 'complete') {
-                    cancelAnimationFrame(animationFrameId);
-                    const endTime = performance.now();
-
-                    UI.statNodes.innerText = e.data.stats.nodes.toLocaleString();
-                    UI.statTime.innerText = ((endTime - startTime) / 1000).toFixed(2) + " s";
-                    UI.statPruned.innerText = e.data.stats.pruned.toLocaleString();
-                    UI.statCache.innerText = e.data.stats.cacheHits.toLocaleString();
-
-                    gameState = e.data.bestMove;
-                    renderBoard();
-
-                    if (gameState === 0) { endGame("AI Wins!"); return; }
-
-                    isPlayerTurn = true;
-                    UI.indicator.innerText = "Your Turn";
-                    UI.indicator.style.color = "var(--text)";
-                    renderBoard();
-                }
-            };
-        };
-
-        const initGame = () => {
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
-            initWorker();
-            numPins = parseInt(UI.pinSlider.value);
-            UI.pinDisplay.innerText = numPins;
-            gameState = (1 << numPins) - 1;
-            selectedPins = [];
-            isPlayerTurn = true;
-            UI.indicator.innerText = "Your Turn";
-            UI.indicator.style.color = "var(--text)";
-            UI.btnConfirm.disabled = true;
-            UI.overlay.classList.remove('active');
-
-            UI.statNodes.innerText = "0";
-            UI.statTime.innerText = "0.00 s";
-            UI.statPruned.innerText = "0";
-            UI.statCache.innerText = "0";
-
-            renderBoard();
-        };
-
-        const createPinSVG = (isActive, isSelected) => {
-            const fill = isActive ? (isSelected ? 'var(--pin-selected)' : 'var(--pin-active)') : 'transparent';
-            const stroke = isActive ? 'none' : 'var(--pin-knocked)';
-            const stripe = isActive ? 'var(--pin-stripe)' : 'transparent';
-
-            return `
-                <svg width="40" height="120" viewBox="0 0 40 120" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M 15 10 C 15 0, 25 0, 25 10 C 25 25, 35 45, 35 80 C 35 110, 30 120, 20 120 C 10 120, 5 110, 5 80 C 5 45, 15 25, 15 10 Z" 
-                          fill="${fill}" stroke="${stroke}" stroke-width="2"/>
-                    ${isActive ? `<path d="M 12 35 Q 20 40 28 35 M 10 45 Q 20 50 30 45" stroke="${stripe}" stroke-width="3" fill="none"/>` : ''}
-                </svg>
-            `;
-        };
-
-        const renderBoard = () => {
-            UI.board.innerHTML = '';
-            for (let i = 0; i < numPins; i++) {
-                const isActive = (gameState & (1 << i)) !== 0;
-                const isSelected = selectedPins.includes(i);
-
-                const pinDiv = document.createElement('div');
-                pinDiv.className = `pin-container ${!isActive ? 'knocked' : ''}`;
-                pinDiv.innerHTML = createPinSVG(isActive, isSelected);
-
-                if (isActive && isPlayerTurn) {
-                    pinDiv.onclick = () => handlePinClick(i);
-                }
-                UI.board.appendChild(pinDiv);
             }
+
+            updateDashboard(currentStep);
+            if (currentStep >= engineData.maxSteps) pause();
         };
 
-        const handlePinClick = (index) => {
-            if (selectedPins.includes(index)) {
-                selectedPins = selectedPins.filter(p => p !== index);
-            } else {
-                if (selectedPins.length === 0) {
-                    selectedPins.push(index);
-                } else if (selectedPins.length === 1) {
-                    const diff = Math.abs(selectedPins[0] - index);
-                    if (diff === 1) selectedPins.push(index);
-                } else {
-                    selectedPins = [index];
-                }
+        const stepNext = () => {
+            if (currentStep >= engineData.maxSteps) { currentStep = -1; }
+            currentStep++;
+            renderStep();
+        };
+        const stepPrev = () => { if (currentStep > -1) { currentStep--; renderStep(); } };
+
+        const play = () => {
+            if (currentStep >= engineData.maxSteps) {
+                currentStep = -1;
+                d3.selectAll('.node, .link').classed('visible', false);
             }
-            UI.btnConfirm.disabled = selectedPins.length === 0;
-            renderBoard();
+            const speed = document.getElementById("slider-speed").value;
+            document.getElementById("btn-play").innerText = "⏸ Pause";
+            playInterval = setInterval(stepNext, speed);
+        };
+        const pause = () => {
+            clearInterval(playInterval);
+            playInterval = null;
+            document.getElementById("btn-play").innerText = "▶ Play";
         };
 
-        const applyHumanMove = () => {
-            if (selectedPins.length === 0) return;
-            selectedPins.forEach(p => { gameState &= ~(1 << p); });
-            selectedPins = [];
-            UI.btnConfirm.disabled = true;
-            renderBoard();
+        document.getElementById("btn-play").addEventListener("click", () => playInterval ? pause() : play());
+        document.getElementById("btn-next").addEventListener("click", () => { pause(); stepNext(); });
+        document.getElementById("btn-prev").addEventListener("click", () => { pause(); stepPrev(); });
+        document.getElementById("slider-speed").addEventListener("input", () => { if (playInterval) { pause(); play(); } });
 
-            if (gameState === 0) { endGame("You Win!"); return; }
-
-            isPlayerTurn = false;
-            UI.indicator.innerText = "AI is thinking...";
-            UI.indicator.style.color = "var(--accent)";
-
-            startTime = performance.now();
-            updateTimer();
-            aiWorker.postMessage({ gameState, mode: UI.modeSelect.value, pins: numPins });
+        const loadMode = (mode, btnId) => {
+            pause();
+            currentMode = mode;
+            document.querySelectorAll("#mode-normal, #mode-ab, #mode-iso").forEach(b => b.classList.remove("active"));
+            document.getElementById(btnId).classList.add("active");
+            initGraphics(mode);
+            currentStep = engineData.maxSteps;
+            renderStep();
         };
 
-        const updateTimer = () => {
-            const current = performance.now();
-            UI.statTime.innerText = ((current - startTime) / 1000).toFixed(2) + " s";
-            animationFrameId = requestAnimationFrame(updateTimer);
-        };
+        document.getElementById("mode-normal").addEventListener("click", () => loadMode('normal', 'mode-normal'));
+        document.getElementById("mode-ab").addEventListener("click", () => loadMode('ab', 'mode-ab'));
+        document.getElementById("mode-iso").addEventListener("click", () => loadMode('iso', 'mode-iso'));
+        document.getElementById("btn-reset").addEventListener("click", resetZoom);
 
-        const endGame = (msg) => {
-            UI.winnerText.innerText = msg;
-            UI.overlay.classList.add('active');
-        };
-
-        UI.pinSlider.addEventListener('input', initGame);
-        UI.btnReset.addEventListener('click', initGame);
-        UI.btnConfirm.addEventListener('click', applyHumanMove);
-        UI.btnPlayAgain.addEventListener('click', initGame);
-
-        initGame();
+        loadMode('iso', 'mode-iso');
     </script>
 </body>
 
